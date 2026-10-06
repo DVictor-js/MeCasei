@@ -1,0 +1,48 @@
+name: mecasei
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file: ${BACKEND_ENV_FILE:-backend/.env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - mecasei_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ${BACKEND_ENV_FILE:-backend/.env}
+    environment:
+      APP_ENV: development
+      PORT: 8000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/tests:/app/tests
+      - ./backend/scripts:/app/scripts
+      - ./backend/docs:/app/docs
+    command: ["python", "scripts/start.py", "--reload"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mecasei_pgdata:
+    name: ${POSTGRES_VOLUME:-mecasei_pgdata}
+    external: ${POSTGRES_VOLUME_EXTERNAL:-false}
